@@ -4,18 +4,54 @@
 
 from flask import Flask, request, jsonify
 from phi.agent import Agent
-#from phi.model.openai import OpenAIChat
+from phi.model.openai import OpenAIChat
 from phi.model.ollama import Ollama
 from phi.tools.duckduckgo import DuckDuckGo
 from flask_cors import CORS
 import requests
 import json
+from dotenv import load_dotenv
+import os
 
 app = Flask(__name__)
 CORS(app)
 
+load_dotenv()
+try:
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+except:
+    openai_api_key = None
+    print("No OpenAI API Key Found. Please set the OPENAI_API_KEY environment variable. Defaulting to ollama")
 
-web_agent = Agent(
+# OpenAI Agents
+openai_web_agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini", api_key=openai_api_key),
+    tools=[DuckDuckGo()],
+    instructions=["Your job is to find the mission statement, values, and culture of the business provided. Think carefully and slowly to provide the best results. Use the tools provided to search the web for more information. If no information is found, just create a realistic response of what you think the business would have for this information."],
+    #show_tool_calls=True,
+    #markdown=True,
+)
+openai_formatter_agent = Agent(
+    model=Ollama(id="gpt-4o-mini", api_key=openai_api_key),
+    instructions=["""
+                  Your job is to format the data provided. Return a JSON object that looks like the following keys and value types. Attached below is an example of the expected output: 
+                    {
+                      "missionStatement" -> str : "To revolutionize the industry through innovative solutions while maintaining the highest standards of excellence.",
+                      "values" -> object : [
+                        "Innovation and Creativity",
+                        "Customer Success",
+                        "Integrity and Trust",
+                        "Collaborative Spirit",
+                        "Continuous Learning"
+                      ],
+                      "culture"-> str : "We foster an inclusive, dynamic environment where creativity thrives and every team member is empowered to make a difference.
+                    }
+                  NOTE: Reply only with this JSON object. No preface or additional information is needed. Start with { and end with }.
+                """],
+)
+  
+# Llama Agents
+llama_web_agent = Agent(
     #model=OpenAIChat(id="gpt-4o"),
     model=Ollama(id="llama3.2:3b"),
     tools=[DuckDuckGo()],
@@ -23,8 +59,7 @@ web_agent = Agent(
     #show_tool_calls=True,
     #markdown=True,
 )
-
-formatter_agent = Agent(
+llama_formatter_agent = Agent(
     model=Ollama(id="llama3.2:3b"),
     instructions=["""
                   Your job is to format the data provided. Return a JSON object that looks like the following keys and value types. Attached below is an example of the expected output: 
@@ -42,6 +77,15 @@ formatter_agent = Agent(
                   NOTE: Reply only with this JSON object. No preface or additional information is needed. Start with { and end with }.
                 """],
 )
+
+# Set the agents to use based on the availability of the OpenAI API Key
+if openai_api_key:
+    web_agent = openai_web_agent
+    formatter_agent = openai_formatter_agent
+else:
+    web_agent = llama_web_agent
+    formatter_agent = llama_formatter_agent
+
 
 
 @app.route('/search', methods=['GET'])
