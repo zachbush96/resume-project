@@ -8,8 +8,11 @@ import {
   Search,
   Filter,
   MoreVertical,
-  ArrowUpDown
+  //ArrowUpDown
 } from 'lucide-react';
+import { getFirestore, collection, getDocs } from 'firebase/firestore';
+import { auth } from '../firebase';
+import { useAuthState } from 'react-firebase-hooks/auth';
 
 interface User {
   id: string;
@@ -34,6 +37,52 @@ interface ApplicationData {
 const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = React.useState<'overview' | 'users' | 'applications'>('overview');
   const [searchTerm, setSearchTerm] = React.useState('');
+  const [users, setUsers] = React.useState<User[]>([]);
+  const [applications, setApplications] = React.useState<ApplicationData[]>([]);
+  const [user, loadingAuth] = useAuthState(auth);
+
+  React.useEffect(() => {
+    const fetchUsers = async () => {
+      const db = getFirestore();
+      const usersCol = collection(db, 'users');
+      const userSnapshot = await getDocs(usersCol);
+      const userList: User[] = userSnapshot.docs.map(doc => ({
+        id: doc.id,
+        name: doc.data().name,
+        email: doc.data().email,
+        isPremium: doc.data().isPremium,
+        joinDate: doc.data().joinDate,
+        applications: doc.data().applications || 0,
+        lastActive: doc.data().lastActive,
+      }));
+      setUsers(userList);
+    };
+
+    const fetchApplications = async () => {
+      const db = getFirestore();
+      const appsCol = collection(db, 'applications');
+      const appSnapshot = await getDocs(appsCol);
+      const appList: ApplicationData[] = appSnapshot.docs.map(doc => ({
+        id: doc.id,
+        userId: doc.data().userId,
+        userName: doc.data().userName,
+        companyName: doc.data().companyName,
+        jobTitle: doc.data().jobTitle,
+        status: doc.data().status,
+        createdAt: doc.data().createdAt,
+      }));
+      setApplications(appList);
+    };
+
+    if (user) {
+      fetchUsers();
+      fetchApplications();
+    }
+  }, [user]);
+
+  if (loadingAuth) {
+    return <div>Loading...</div>;
+  }
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -47,7 +96,7 @@ const AdminDashboard: React.FC = () => {
           <div className="flex items-center gap-4">
             <span className="text-gray-600">Admin User</span>
             <img
-              src="/api/placeholder/32/32"
+              src={user?.photoURL || '/api/placeholder/32/32'}
               alt="Admin"
               className="w-8 h-8 rounded-full bg-gray-200"
             />
@@ -61,21 +110,21 @@ const AdminDashboard: React.FC = () => {
           <StatCard
             icon={<Users className="h-6 w-6 text-blue-600" />}
             title="Total Users"
-            value="1,234"
+            value={users.length.toString()}
             trend="+12%"
             trendUp={true}
           />
           <StatCard
             icon={<BadgeDollarSign className="h-6 w-6 text-green-600" />}
             title="Premium Users"
-            value="436"
+            value={users.filter(u => u.isPremium).length.toString()}
             trend="+8%"
             trendUp={true}
           />
           <StatCard
             icon={<FileText className="h-6 w-6 text-purple-600" />}
             title="Applications"
-            value="3,789"
+            value={applications.length.toString()}
             trend="+15%"
             trendUp={true}
           />
@@ -130,8 +179,8 @@ const AdminDashboard: React.FC = () => {
 
         {/* Content Area */}
         <div className="bg-white rounded-lg shadow">
-          {activeTab === 'users' && <UsersTable />}
-          {activeTab === 'applications' && <ApplicationsTable />}
+          {activeTab === 'users' && <UsersTable users={users} searchTerm={searchTerm} />}
+          {activeTab === 'applications' && <ApplicationsTable applications={applications} searchTerm={searchTerm} />}
           {activeTab === 'overview' && <DashboardOverview />}
         </div>
       </div>
@@ -181,19 +230,16 @@ const TabButton: React.FC<TabButtonProps> = ({ active, onClick, children }) => (
   </button>
 );
 
-const UsersTable: React.FC = () => {
-  const users: User[] = [
-    {
-      id: '1',
-      name: 'John Doe',
-      email: 'john@example.com',
-      isPremium: true,
-      joinDate: '2024-01-15',
-      applications: 12,
-      lastActive: '2024-03-28'
-    },
-    // Add more sample data as needed
-  ];
+interface UsersTableProps {
+  users: User[];
+  searchTerm: string;
+}
+
+const UsersTable: React.FC<UsersTableProps> = ({ users, searchTerm }) => {
+  const filteredUsers = users.filter(user =>
+    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.email.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="overflow-x-auto">
@@ -221,12 +267,12 @@ const UsersTable: React.FC = () => {
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
-          {users.map((user) => (
+          {filteredUsers.map((user) => (
             <tr key={user.id} className="hover:bg-gray-50">
               <td className="px-6 py-4 whitespace-nowrap">
                 <div className="flex items-center">
                   <img
-                    src="/api/placeholder/40/40"
+                    src={user.id ? `/api/placeholder/${user.id}` : '/api/placeholder/40/40'}
                     alt=""
                     className="h-10 w-10 rounded-full bg-gray-200"
                   />
@@ -267,19 +313,17 @@ const UsersTable: React.FC = () => {
   );
 };
 
-const ApplicationsTable: React.FC = () => {
-  const applications: ApplicationData[] = [
-    {
-      id: '1',
-      userId: '1',
-      userName: 'John Doe',
-      companyName: 'Tech Corp',
-      jobTitle: 'Software Engineer',
-      status: 'Generated',
-      createdAt: '2024-03-28'
-    },
-    // Add more sample data as needed
-  ];
+interface ApplicationsTableProps {
+  applications: ApplicationData[];
+  searchTerm: string;
+}
+
+const ApplicationsTable: React.FC<ApplicationsTableProps> = ({ applications, searchTerm }) => {
+  const filteredApps = applications.filter(app =>
+    app.companyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    app.jobTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    app.userName.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="overflow-x-auto">
@@ -304,7 +348,7 @@ const ApplicationsTable: React.FC = () => {
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
-          {applications.map((app) => (
+          {filteredApps.map((app) => (
             <tr key={app.id} className="hover:bg-gray-50">
               <td className="px-6 py-4 whitespace-nowrap">
                 <div>

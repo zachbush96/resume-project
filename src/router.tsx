@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import LandingPage from './components/landingPage';
 import SignInPage from './components/signInPage';
+import AdminDashboard from './components/AdminDashboard';
 import App from './App';
 import { auth } from './firebase';
 import { useEffect, useState } from 'react';
@@ -40,6 +41,14 @@ const router = createBrowserRouter([
     element: (
       <AuthenticatedRoute>
         <App />
+      </AuthenticatedRoute>
+    )
+  },
+  {
+    path: '/dashboard',
+    element: (
+      <AuthenticatedRoute>
+        <AdminDashboard />
       </AuthenticatedRoute>
     )
   }
