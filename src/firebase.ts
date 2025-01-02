@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 // Web Client ID : 169810374201-adqdrbv5eqratspoj2tqr7rvf5ecokkc.apps.googleusercontent.com
 // Client Secret : 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
 const firebaseConfig = {
@@ -11,6 +12,7 @@ const firebaseConfig = {
   appId: "1:169810374201:web:d5e38aeb055166a6ece7e8"
 };
 
-const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+export const db = getFirestore(app);
 export const provider = new GoogleAuthProvider();

@@ -42,30 +42,7 @@ const LandingPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-100 to-indigo-200">
-      {/* Header */}
-      <header className="bg-white shadow-md w-full">
-        <div className="container mx-auto px-4 py-6 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <BrainCog className="h-8 w-8 text-indigo-600" />
-            <h1 className="text-2xl font-bold text-gray-800">Job Getter AI</h1>
-          </div>
-          <div className="flex gap-4">
-            <button
-              onClick={handleLogin}
-              className="px-4 py-2 text-indigo-600 hover:text-indigo-700 transition-colors"
-            >
-              Login
-            </button>
-            <button
-              onClick={handleSignUp}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-            >
-              Sign Up Free
-            </button>
-          </div>
-        </div>
-      </header>
-
+    
       {/* Hero Section */}
       <section className="container mx-auto px-4 py-20 text-center">
         <h1 className="text-5xl font-bold text-gray-900 mb-6">

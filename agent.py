@@ -1,156 +1,180 @@
-# Create a simple API endpoint that uses phidata agent to search / scrape data from the web
-# API should be passed a business name, and return the business:
-# Mission Statement, values, and culture
-
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from phi.agent import Agent
 from phi.model.openai import OpenAIChat
 from phi.model.ollama import Ollama
 from phi.tools.duckduckgo import DuckDuckGo
-from flask_cors import CORS
-import requests
+from phi.tools.googlesearch import GoogleSearch
+import os
 import json
 from dotenv import load_dotenv
-import os
 
+# Initialize Flask app
 app = Flask(__name__)
-CORS(app)
 
+# Enable CORS with specific configurations
+CORS(app, resources={
+    r"/*": {
+        "origins": "*",  # Replace '*' with specific domains in production
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
+
+# Load environment variables
 load_dotenv()
-try:
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-except:
-    openai_api_key = None
-    print("No OpenAI API Key Found. Please set the OPENAI_API_KEY environment variable. Defaulting to ollama")
+openai_api_key = os.getenv("OPENAI_API_KEY")
+if not openai_api_key:
+    print("No OpenAI API Key Found. Defaulting to Ollama.")
 
-# OpenAI Agents
+# Agent configuration instructions
+search_instructions = (
+    "Your job is to find the mission statement, values, and culture of the provided business. "
+    "Search the web using the tools provided, or create a realistic response if no data is available."
+)
+
+format_instructions = (
+    "Format the following information into JSON with the following keys and types:\n"
+    "{\n"
+    "  'missionStatement': str,\n"
+    "  'values': list of str,\n"
+    "  'culture': str\n"
+    "}.\n"
+    "Reply only with the JSON object."
+)
+
+# Define agents for OpenAI and Ollama
 openai_web_agent = Agent(
     model=OpenAIChat(id="gpt-4o-mini", api_key=openai_api_key),
     tools=[DuckDuckGo()],
-    instructions=["Your job is to find the mission statement, values, and culture of the business provided. Think carefully and slowly to provide the best results. Use the tools provided to search the web for more information. If no information is found, just create a realistic response of what you think the business would have for this information."],
-    #show_tool_calls=True,
-    #markdown=True,
-)
-openai_formatter_agent = Agent(
-    model=Ollama(id="gpt-4o-mini", api_key=openai_api_key),
-    instructions=["""
-                  Your job is to format the data provided. Return a JSON object that looks like the following keys and value types. Attached below is an example of the expected output: 
-                    {
-                      "missionStatement" -> str : "To revolutionize the industry through innovative solutions while maintaining the highest standards of excellence.",
-                      "values" -> object : [
-                        "Innovation and Creativity",
-                        "Customer Success",
-                        "Integrity and Trust",
-                        "Collaborative Spirit",
-                        "Continuous Learning"
-                      ],
-                      "culture"-> str : "We foster an inclusive, dynamic environment where creativity thrives and every team member is empowered to make a difference.
-                    }
-                  NOTE: Reply only with this JSON object. No preface or additional information is needed. Start with { and end with }.
-                """],
-)
-  
-# Llama Agents
-llama_web_agent = Agent(
-    #model=OpenAIChat(id="gpt-4o"),
-    model=Ollama(id="llama3.2:3b"),
-    tools=[DuckDuckGo()],
-    instructions=["Your job is to find the mission statement, values, and culture of the business provided. Think carefully and slowly to provide the best results. Use the tools provided to search the web for more information. If no information is found, just create a realistic response of what you think the business would have for this information."],
-    #show_tool_calls=True,
-    #markdown=True,
-)
-llama_formatter_agent = Agent(
-    model=Ollama(id="llama3.2:3b"),
-    instructions=["""
-                  Your job is to format the data provided. Return a JSON object that looks like the following keys and value types. Attached below is an example of the expected output: 
-                    {
-                      "missionStatement" -> str : "To revolutionize the industry through innovative solutions while maintaining the highest standards of excellence.",
-                      "values" -> object : [
-                        "Innovation and Creativity",
-                        "Customer Success",
-                        "Integrity and Trust",
-                        "Collaborative Spirit",
-                        "Continuous Learning"
-                      ],
-                      "culture"-> str : "We foster an inclusive, dynamic environment where creativity thrives and every team member is empowered to make a difference.
-                    }
-                  NOTE: Reply only with this JSON object. No preface or additional information is needed. Start with { and end with }.
-                """],
+    instructions=[search_instructions]
 )
 
-# Set the agents to use based on the availability of the OpenAI API Key
+openai_formatter_agent = Agent(
+    model=OpenAIChat(id="gpt-4o-mini", api_key=openai_api_key),
+    instructions=[format_instructions]
+)
+
+llama_web_agent = Agent(
+    model=Ollama(id="llama3.2:3b"),
+    #tools=[DuckDuckGo()],
+    tools=[GoogleSearch()],
+    instructions=[search_instructions]
+)
+
+llama_formatter_agent = Agent(
+    model=Ollama(id="llama3.2:3b"),
+    instructions=[format_instructions]
+)
+
+# Choose agents based on available API key
 if openai_api_key:
-    web_agent = openai_web_agent
-    formatter_agent = openai_formatter_agent
+    web_agent = llama_web_agent
+    formatter_agent = llama_formatter_agent
 else:
     web_agent = llama_web_agent
     formatter_agent = llama_formatter_agent
 
-
-
+# Endpoint: Search for business information
 @app.route('/search', methods=['GET'])
 def search():
     query = request.args.get('query')
+    if not query:
+        return jsonify({'error': 'Query parameter is required'}), 400
+
     print(f"Searching for: {query}")
-    if not query:
-        return jsonify({'error': 'Query is required'}), 400
+    try:
+        results = web_agent.run(f"Tell me about {query}. Their mission statement, values, and culture.")
+    except Exception as e:
+        #print(f"Error during DuckDuckGo search: {e}")
+        return jsonify({'error': 'An error occurred while searching for information.'}), 500
 
-    results = web_agent.run(f"Tell me about {query}. Their Mission statement, their values, and their culture. Search the web for more information.")
-    
-    agent_responses = []
-
-    # Ensure we parse the results correctly
-    for message in results.messages:
-        #print(f"Message From: {message.role}")
-        if message.role == "assistant":
-            #return jsonify({'result': message.content})
-            agent_responses.append(message.content)
-    if agent_responses:
-        print(f"Search Response Complete")
-        return jsonify({'result': agent_responses})
+    # Extract assistant responses
+    responses = [msg.content for msg in results.messages if msg.role == "assistant" and msg.content] # Response: ['', "Based on the avai..."]
+    if responses:
+        print("Search completed successfully.")
+        print(f"Response: {responses}")
+        return jsonify({'result': responses})
+        #return responses
     else:
-        return jsonify({'error': 'No results found'}),
+        return jsonify({'error': 'No results found'}), 404
 
+# Endpoint: Format business information
 @app.route('/format', methods=['GET'])
-def format(query=None, depth=0):
-    query = request.args.get('query')
-    #print(f"Formatting: {query}")
-    if not query:
-        return jsonify({'error': 'Query is required'}), 400
-    results = formatter_agent.run(f"""Format the following: {query}. missionStatement:str, values:object, culture:str. Only reply back with the formatted JSON object. No preface or additional information is needed.""")
-    agent_responses = []
-    # Ensure we parse the results correctly
-    for message in results.messages:
-        #print(f"Message From: {message.role}")
-        if message.role == "assistant":
-            #return jsonify({'result': message.content})
-            agent_responses.append(message.content)
+def format_data():
+    query_param = request.args.get('query')
+    if not query_param:
+        return jsonify({'error': 'Query parameter is required'}), 400
 
-    # For message in agent_responses, make sure atleast one of the values contains a valid JSON object
-    for message in agent_responses:
+    try:
+        # Parse the JSON string from the query parameter
+        request_data = json.loads(query_param)
+    except json.JSONDecodeError:
+        return jsonify({'error': 'Invalid JSON format in query parameter'}), 400
+
+    # Ensure 'result' key exists and is a list
+    if 'result' not in request_data or not isinstance(request_data['result'], list):
+        return jsonify({'error': "'result' key is missing or is not a list in the query parameter"}), 400
+
+    # Extract the first item from the 'result' list
+    data = request_data['result'][0] if request_data['result'] else ""
+    print(f"Formatting data: {data}")
+
+    # If data is an empty string, return an error
+    if data == "":
+        return jsonify({'error': 'Empty String'}), 400
+
+    max_retries = 3
+    for attempt in range(max_retries):
         try:
-            json_object = json.loads(message)
-            if isinstance(json_object, dict) and all(k in json_object for k in ("missionStatement", "values", "culture")):
-                # If the JSON object is valid, return it
-                return jsonify({'result': json_object})
-        except:
-            print(f"Invalid JSON, not formatted correctly: {message}")
-            # Call format function recursively to try and format the response again
-            response = format(query=message)
-            return response
+            results = formatter_agent.run(f"Format the following: {data}")
+        except Exception as e:
+            print(f"Attempt {attempt + 1}: Error during formatting: {e}")
+            continue
 
-            
+        # Parse responses for JSON validity
+        for message in results.messages:
+            if message.role == "assistant" and message.content:
+                try:
+                    json_object = json.loads(message.content)
+                    if all(k in json_object for k in ("missionStatement", "values", "culture")):
+                        return jsonify({'result': json_object})
+                except json.JSONDecodeError:
+                    print(f"Attempt {attempt + 1}: Invalid JSON format received.")
+                    data = message.content  # Retry with the latest response
+                    break
+        else:
+            # If no valid JSON found in messages, continue to next attempt
+            continue
+
+    return jsonify({'error': 'Failed to format data after multiple attempts'}), 500
+
+# Endpoint: Test the API with a sample company
+@app.route('/test', methods=['GET'])
+def test():
+    company = "Fruit of the Loom"
+    print(f"Testing with company: {company}")
+
+    # Call the /search endpoint using Flask's test client
+    with app.test_client() as client:
+        search_response = client.get('/search', query_string={'query': company})
+        if search_response.status_code != 200:
+            return search_response
+
+        # Extract data from the search response
+        search_data = search_response.get_json().get('result')
+        if not search_data:
+            return jsonify({'error': 'No search data returned'}), 404
+
+        # Call the /format endpoint using the test client
+        format_response = client.post('/format', json={'data': search_data[0]})
+        if format_response.status_code != 200:
+            return format_response
+
+        # Return the final formatted result
+        return format_response
 
 
-
-
-    if agent_responses:
-        print(f"❤️ Formatted Response: {agent_responses}")
-        return jsonify({'result': agent_responses})
-    else:
-        return jsonify({'error': 'No results found'}),
-
-
+# Main entry point
 if __name__ == '__main__':
     app.run(debug=True)
-    #pass

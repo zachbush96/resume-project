@@ -3,9 +3,12 @@ import LandingPage from './components/landingPage';
 import SignInPage from './components/signInPage';
 import AdminDashboard from './components/AdminDashboard';
 import App from './App';
+import { InterviewPrep } from './components/InterviewPrep';
+import { TokenPurchase } from './components/TokenPurchase';
 import { auth } from './firebase';
 import { useEffect, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
+import { Layout } from './components/Layout';
 
 const AuthenticatedRoute = ({ children }: { children: JSX.Element }) => {
   const [loading, setLoading] = useState(true);
@@ -21,35 +24,93 @@ const AuthenticatedRoute = ({ children }: { children: JSX.Element }) => {
   }, []);
 
   if (loading) {
-    return <div>Loading...</div>; // You can replace this with a loading spinner or similar
+    return <div>Loading...</div>;
   }
 
   return isAuthenticated ? children : <Navigate to="/signin" replace />;
 };
 
+const AdminRoute = ({ children }: { children: JSX.Element }) => {
+  const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        // Check if user has admin role (implement your admin check logic)
+        const isUserAdmin = user.email?.endsWith('@jobgetterai.com') || false;
+        setIsAdmin(isUserAdmin);
+      } else {
+        setIsAdmin(false);
+      }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
+  return isAdmin ? children : <Navigate to="/app" replace />;
+};
+
 const router = createBrowserRouter([
   {
     path: '/',
-    element: <LandingPage />
+    element: (
+      <Layout>
+        <LandingPage />
+      </Layout>
+    )
   },
   {
     path: '/signin',
-    element: <SignInPage />
+    element: (
+      <Layout>
+        <SignInPage />
+      </Layout>
+    )
   },
   {
     path: '/app',
     element: (
       <AuthenticatedRoute>
-        <App />
+        
+          <App />
+        
+      </AuthenticatedRoute>
+    )
+  },
+  {
+    path: '/interview',
+    element: (
+      <AuthenticatedRoute>
+        <Layout>
+          <InterviewPrep onSubmit={() => {}} />
+        </Layout>
+      </AuthenticatedRoute>
+    )
+  },
+  {
+    path: '/tokens',
+    element: (
+      <AuthenticatedRoute>
+        <Layout>
+          <TokenPurchase currentBalance={0} />
+        </Layout>
       </AuthenticatedRoute>
     )
   },
   {
     path: '/dashboard',
     element: (
-      <AuthenticatedRoute>
-        <AdminDashboard />
-      </AuthenticatedRoute>
+      <AdminRoute>
+        <Layout>
+          <AdminDashboard />
+        </Layout>
+      </AdminRoute>
     )
   }
 ]);

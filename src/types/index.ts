@@ -68,3 +68,41 @@ export interface TokenPackage {
   name: string;
   description: string;
 }
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  name: string;
+  defaultResume: string;
+  createdAt: number;
+  lastLogin: number;
+  isPremium: boolean;
+}
+
+export interface Generation {
+  id: string;
+  userId: string;
+  timestamp: number;
+  resume: string;
+  coverLetter: string;
+  interviewQuestions: InterviewQuestion[];
+  companyInfo: CompanyInfo;
+  jobTitle: string;
+  companyName: string;
+}
+
+export interface TokenBalance {
+  userId: string;
+  balance: number;
+  lastUpdated: number;
+}
+
+export interface Purchase {
+  id: string;
+  userId: string;
+  amount: number;
+  tokens: number;
+  status: 'pending' | 'completed' | 'failed';
+  timestamp: number;
+  stripeSessionId?: string;
+}

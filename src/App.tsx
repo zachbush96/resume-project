@@ -138,8 +138,8 @@ export default function App() {
       <div>
         {user ? (
           <div>
-            <h1>Welcome, {user.displayName}</h1>
-            <button onClick={handleSignOut}>Sign Out</button>
+            {/*<h1>Welcome, {user.displayName}</h1> */}
+            {/* <button onClick={handleSignOut}>Sign Out</button> */}
             {/* Render User Input Form with defaultResume */}
           </div>
         ) : (
